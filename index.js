@@ -1,6 +1,17 @@
 const express = require('express')
+const morgan = require('morgan')
+const cors = require('cors')
 const app = express()
+morgan.token('type', (req) =>{
+  const method = req.method
+  if(method === "POST"){
+    return console.log(req.body)
+  }
+})
+const logger = morgan(':method :url :status :res[content-length] - :response-time ms :type')
 app.use(express.json())
+app.use(logger)
+app.use(cors())
 
 let data = [
     { 
@@ -31,8 +42,54 @@ app.get('/info', (request, response) => {
 app.get('/api/persons', (request, response) => {
     response.json(data)
 })
+app.get('/api/persons/:id', (request, response) => {
+    const id = Number(request.params.id)
+    person = data.find(entry => entry.id === id)
+    if(person){ // Objects are truthy, null is falsey :|
+      response.json(person)
+    }
+    else{
+      response.status(404).end()
+    }
+})
+app.post('/api/persons', (request, response) => {
+  const body = request.body
+  if(!(body.name)){
+    return response.status(400).json({
+      'error' : 'Name is missing'
+    })
+  }
+  if(!(body.number)){
+    return response.status(400).json({
+      'error' : 'Number is missing'
+    })
+  }
+  duplicate_name = data.find(entry => entry.name === body.name)
+  if(duplicate_name){
+    return response.status(400).json({
+      'error' : 'Duplicate Name'
+    })
+  }
 
-const PORT = 3001
+  entry = {
+    'id' : Math.floor(Math.random()*999),
+    'name' : body.name,
+    'number' : `${body.number}`
+  }
+
+  data = data.concat(entry)
+
+  response.json(data)
+
+
+})
+app.delete('/api/persons/:id', (request, response) => {
+  const id = Number(request.params.id)
+  data = data.filter(entry => entry.id !== id)
+  response.status(204).end()
+})
+
+const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
   })
