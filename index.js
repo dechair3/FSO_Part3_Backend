@@ -1,10 +1,12 @@
+require('dotenv').config()
 const express = require('express')
 const morgan = require('morgan')
 const cors = require('cors')
 const app = express()
+const Entry = require('./models/entry')
 morgan.token('type', (req) =>{
   const method = req.method
-  if(method === "POST"){
+  if(method === 'POST'){
     return console.log(req.body)
   }
 })
@@ -12,47 +14,52 @@ const logger = morgan(':method :url :status :res[content-length] - :response-tim
 app.use(express.json())
 app.use(logger)
 app.use(cors())
+app.use(express.static('build'))
 
-let data = [
-    { 
-      "id": 1,
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": 2,
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": 3,
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": 4,
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-]
+
 app.get('/info', (request, response) => {
-    let date = new Date()
-    response.send(`The phonebook has ${data.length} people's information on it <br/> ${date}`)
+  const date = new Date()
+    
+  Entry.countDocuments({}).then((result) =>{
+    const length = result
+    response.send(`The phonebook has ${length} people's information on it <br/> ${date}`)
+  })
+    
 })
 app.get('/api/persons', (request, response) => {
-    response.json(data)
+  Entry.find({}).then((result) =>{
+    console.log(result)
+    response.json(result)
+      
+  })
+    
 })
-app.get('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    person = data.find(entry => entry.id === id)
-    if(person){ // Objects are truthy, null is falsey :|
-      response.json(person)
+app.get('/api/persons/:id', (request, response, next) => {
+  const id = (request.params.id)
+  Entry.findById(id).then(result => {
+    if(result){ // Objects are truthy, null is falsey :|
+      response.json(result)
     }
     else{
       response.status(404).end()
     }
+      
+  }).catch(error => next(error))
 })
-app.post('/api/persons', (request, response) => {
+app.put('/api/persons/:id', (request, response, next) => {
+  const id = (request.params.id)
+  console.log(request)
+  const body = request.body
+  const entry = {
+    name: body.name,
+    number: body.number
+  }
+  Entry.findByIdAndUpdate(id, entry).then(result => {
+    response.json(result)
+    
+  }).catch(error => next(error))
+})
+app.post('/api/persons', (request, response, next) => {
   const body = request.body
   if(!(body.name)){
     return response.status(400).json({
@@ -64,32 +71,46 @@ app.post('/api/persons', (request, response) => {
       'error' : 'Number is missing'
     })
   }
-  duplicate_name = data.find(entry => entry.name === body.name)
-  if(duplicate_name){
-    return response.status(400).json({
-      'error' : 'Duplicate Name'
-    })
-  }
+ 
+  
 
-  entry = {
-    'id' : Math.floor(Math.random()*999),
+  const entry = new Entry({
     'name' : body.name,
     'number' : `${body.number}`
-  }
-
-  data = data.concat(entry)
-
-  response.json(data)
+  })
+  console.log(entry)
+  entry.save().then(entry =>{
+    console.log(`Saved ${body.name}, Number: ${body.number} to phonebook`)
+    response.json(entry)
+    
+  }).catch(error => next(error))
 
 
 })
 app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  data = data.filter(entry => entry.id !== id)
-  response.status(204).end()
+  const id = (request.params.id)
+  Entry.findByIdAndDelete(id).then(() => {
+    response.status(204).end()
+    
+  })
 })
 
-const PORT = process.env.PORT || 3001
+
+const errorHandler = (error, request, response, next) => {
+
+  console.error(error.message)
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  }
+  else if (error.name === 'ValidationError'){
+    return response.status(400).send({error: error.message})
+  } 
+
+  next(error)
+}
+
+app.use(errorHandler)
+const PORT = process.env.PORT
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
-  })
+  console.log(`Server running on port ${PORT}`)
+})
